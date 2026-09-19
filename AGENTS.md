@@ -1,7 +1,7 @@
 # AGENTS.md — 給 AI agent 的操作指南
 
 這個專案查 **Google Flights 當下顯示的直飛票價**，全部在使用者本機執行。
-讀完這份你應該能：幫使用者查票、解讀結果、改程式而不破壞既有規則。人類版說明在 [README](README.md)，規則細節在 [docs/reference.md](docs/reference.md)。
+讀完這份你應該能：幫使用者查票、解讀結果、改程式而不破壞既有規則。人類版說明在 [README](README.md)（[中文](README.zh-TW.md)），規則細節在 [docs/reference.md](docs/reference.md)。
 
 ## 先決條件
 
