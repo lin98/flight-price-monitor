@@ -1,0 +1,10 @@
+.env
+data/
+output/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv*/
+.DS_Store
+*session.json
+*.sqlite3

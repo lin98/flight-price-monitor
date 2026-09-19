@@ -1,0 +1,88 @@
+const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=v=>v==null?'未報價':'NT$ '+Number(v).toLocaleString('zh-TW'), delta=v=>v==null?'—':(v>0?'+':'')+Number(v).toLocaleString('zh-TW');
+const stamp=v=>v?new Date(v).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}):'—';
+const airlineNames = {
+  'tigerair taiwan':'台灣虎航', 'eastar jet':'易斯達航空', 'jeju air':'濟州航空',
+  'air busan':'釜山航空', 'korean air':'大韓航空', 'jin air':'真航空',
+  'china airlines':'中華航空', 'eva air':'長榮航空', 'starlux airlines':'星宇航空',
+  'asiana airlines':'韓亞航空', "t'way air":'德威航空', 'tway air':'德威航空',
+  'air seoul':'首爾航空', 'air premia':'普萊米婭航空', 'aero k':'可依航空',
+  'japan airlines':'日本航空', 'all nippon airways':'全日本空輸', 'ana':'全日本空輸',
+  'peach':'樂桃航空', 'peach aviation':'樂桃航空', 'jetstar japan':'捷星日本航空',
+  'cathay pacific':'國泰航空', 'hong kong airlines':'香港航空', 'hk express':'香港快運',
+  'singapore airlines':'新加坡航空', 'scoot':'酷航', 'thai airways':'泰國航空',
+  'airasia':'亞洲航空', 'thai airasia':'泰國亞洲航空', 'vietnam airlines':'越南航空',
+  'vietjet air':'越捷航空', 'philippine airlines':'菲律賓航空', 'cebu pacific':'宿霧太平洋航空',
+  'air china':'中國國際航空', 'china eastern':'中國東方航空', 'china eastern airlines':'中國東方航空',
+  'china southern':'中國南方航空', 'china southern airlines':'中國南方航空'
+};
+function airlineName(value){const name=String(value??'').trim();return airlineNames[name.toLowerCase().replace(/\s+/g,' ')]||name;}
+let mode='dates',active=null;
+function message(s=''){$('message').textContent=s;$('message').hidden=!s;}
+function setMode(next){mode=next;document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',b.dataset.mode===mode);});['dates','scan','history'].forEach(m=>$(m+'-fields').hidden=m!==mode);$('depart').required=mode==='dates';$('start').required=mode==='scan';$('refresh-label').hidden=mode==='history';$('save-watch').hidden=mode==='history';$('submit').textContent=mode==='history'?'查看票價歷史':mode==='scan'?'比較便宜日期':'查詢航班 ↗';$('submit').disabled=!!active&&mode!=='history';$('mode-hint').textContent=mode==='scan'?'掃描多天需要數分鐘。固定停留晚數，比較兩張單程合計。':mode==='history'?'報價日期採台灣時間。快取不重複記錄，未報價不視為 0 元。':'1 位成人 · 經濟艙 · 直飛 · 台幣。台北預設桃園 TPE。';message();}
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));$('swap').onclick=()=>{const a=$('origin').value;$('origin').value=$('destination').value;$('destination').value=a;};
+async function api(url,options){const r=await fetch(url,options),data=await r.json();if(!r.ok)throw Error(data.error||'查詢失敗');return data;}
+function table(headers,rows){return '<div class="table-wrap"><table><thead><tr>'+headers.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';}
+function flight(f){return esc(airlineName(f.airline))+' '+esc((f.flights||[]).join(' / '))+'<br><span class="time">'+esc(f.depart_time)+' → '+esc(f.arrive_time)+'</span>'+(f.arrive_date!==f.depart_date?' <small>'+esc(f.arrive_date)+'</small>':'');}
+function leg(r,title){if(!r)return '';return '<section class="panel"><h3>'+esc(title)+'</h3><p class="meta">'+esc(r.origin)+' → '+esc(r.destination)+' · '+esc(r.date)+' · '+esc(r.status)+' · '+(r.provenance==='cache'?'快取':'實際查詢')+' · '+stamp(r.fetched_at)+'</p>'+ (r.reason?'<p>'+esc(r.reason)+'</p>':'')+table(['航空公司／班次／當地起降時間','單程價格'],(r.flights||[]).map(f=>[flight(f),'<strong class="price">'+money(f.price)+'</strong>']))+'</section>';}
+// Fees are user estimates, separate from source quotes and historical prices.
+function combinationPicker(report){
+const rows=report.dates||[];
+if(!rows.length)return;
+const panel=document.createElement('section');panel.className='panel combination-picker';
+panel.innerHTML='<h3>選擇航班與試算價格</h3><p class="meta">每位成人 · 台幣。分別選擇去程與回程，可搭配不同航空公司。</p>'+
+'<label>行程日期<select id="combo-date">'+rows.map((r,i)=>'<option value="'+i+'">'+esc(r.depart)+(r.return?' → '+esc(r.return):' · 單程')+'</option>').join('')+'</select></label><div id="combo-legs"></div><div id="combo-total" aria-live="polite"></div>'+
+'<p class="status-note">來源未提供獨立稅額及含稅狀態。請先向訂票網站確認，僅填入尚未包含的稅費／其他費用，避免重複加稅。留白表示未確認，確認無額外費用可填 0。試算不會修改原始報價或歷史紀錄；實際付款金額以訂票網站為準。</p>';
+$('results').querySelector('.result-note').after(panel);
+let row;
+const sides=()=>row.inbound?['outbound','inbound']:['outbound'];
+const validPrice=f=>f&&Number.isFinite(f.price)&&f.price>0&&(!f.currency||f.currency==='TWD');
+function update(){
+let base=0,extra=0,unknown=false,missing=false,invalid=false;
+const lines=sides().map(side=>{
+const title=side==='outbound'?'去程':'回程',select=$('combo-'+side),f=row[side].flights?.[Number(select.value)],fee=$('fee-'+side);
+if(select.value===''||!validPrice(f))missing=true;else base+=Math.round(f.price*100);
+const blank=fee.value.trim()==='';
+if(!fee.validity.valid||(!blank&&(!Number.isFinite(fee.valueAsNumber)||fee.valueAsNumber<0)))invalid=true;
+else if(blank)unknown=true;else extra+=Math.round(fee.valueAsNumber*100);
+fee.setAttribute('aria-invalid',String(!fee.validity.valid));
+return [title+'單程報價',select.value!==''&&validPrice(f)?money(f.price):'尚未選擇有報價的航班'];
+});
+$('combo-total').innerHTML=table(['試算明細','每人金額'],lines.concat([
+['已選航班報價小計',missing?'待選擇航班':money(base/100)],
+['另加稅費／其他費用（手動輸入）',invalid?'請輸入非負金額，最多兩位小數':unknown?'尚未全部確認'+(extra?'（已填 '+money(extra/100)+'）':''):money(extra/100)],
+[unknown?'目前試算（額外費用未確認）':'預估總額',missing||invalid?'無法計算':'<strong class="price">'+money((base+extra)/100)+'</strong>']
+]));
+}
+function draw(){
+row=rows[Number($('combo-date').value)];
+$('combo-legs').innerHTML='<div class="selection-grid">'+sides().map(side=>{
+const title=side==='outbound'?'出發':'回程',r=row[side],flights=r.flights||[];
+return '<div><label>選擇'+title+'航班<select id="combo-'+side+'"><option value="">請選擇'+title+'航班</option>'+flights.map((f,i)=>'<option value="'+i+'"'+(!validPrice(f)?' disabled':'')+'>'+esc(airlineName(f.airline)+' '+((f.flights||[]).join('/')||'未確認班號')+' · '+f.depart_time+' → '+f.arrive_time+(f.arrive_date!==f.depart_date?' ('+f.arrive_date+')':'')+' · '+money(f.price))+(!validPrice(f)?'（無可用台幣報價）':'')+'</option>').join('')+'</select></label><p class="selection-meta">'+esc(r.origin||'')+' → '+esc(r.destination||'')+' · '+esc(r.date|| (side==='outbound'?row.depart:row.return))+' · 報價時間 '+stamp(r.fetched_at)+(flights.some(validPrice)?'':' · 沒有可選的有價航班')+'</p><label>'+title+'另加稅費／其他費用（NT$／人）<input id="fee-'+side+'" type="number" min="0" step="0.01" placeholder="未確認；確認無額外費用填 0"></label></div>';
+}).join('')+'</div>';
+sides().forEach(side=>{
+$('combo-'+side).onchange=()=>{$('fee-'+side).value='';update();};
+$('fee-'+side).oninput=update;
+});update();
+}
+$('combo-date').onchange=draw;draw();
+
+}
+function renderReport(r){let html='<div class="result-head"><h2>'+esc(r.origin)+' → '+esc(r.destination)+'</h2><span class="tag">'+stamp(r.generated_at)+'</span></div><p class="result-note">'+(r.price_type==='two_one_way_sum'?'兩張單程合計，並非來回套票報價。':'單程報價。')+' 完整取得 '+r.successful_queries+' / '+r.requested_queries+' 次查詢。</p>';
+if(r.mode==='scan'){html+='<section class="panel"><h3>便宜日期排行</h3>'+table(['出發','回程','最低合計'],r.ranked.map(x=>[esc(x.depart),esc(x.return),money(x.min_price)]))+'</section><details class="panel"><summary>所有日期與查詢狀態</summary>'+table(['出發','回程','最低合計','去程／回程狀態'],r.dates.map(x=>[esc(x.depart),esc(x.return),money(x.min_price),esc(x.outbound.status)+' / '+esc(x.inbound?.status)]))+'</details>';}
+else{const row=r.dates[0];if(row){if(row.inbound)html+='<section class="panel"><h3>航班組合 · '+row.combination_count+' 組</h3>'+table(['去程','回程','兩張單程合計'],row.combinations.map(c=>[flight(c.outbound),flight(c.inbound),'<strong class="price">'+money(c.price)+'</strong>']))+'</section>';html+=leg(row.outbound,'去程所有可見班次')+leg(row.inbound,'回程所有可見班次');}}
+$('results').innerHTML=html;combinationPicker(r);}
+async function poll(id){try{const j=await api('/api/jobs/'+encodeURIComponent(id));$('progress-line').textContent=j.logs.at(-1)||'正在連線查詢，請稍候…';const matches=j.logs.join('\n').match(/\[(\d+)\/(\d+)\]/g);if(matches){const nums=matches.at(-1).match(/\d+/g);$('progress-count').textContent=nums.join(' / ');$('progress-bar').value=100*Number(nums[0])/Number(nums[1]);}if(j.state==='running'){setTimeout(()=>poll(id),1500);return;}active=null;sessionStorage.removeItem('fare-job');$('progress').hidden=true;$('submit').disabled=false;if(mode!=='history'&&j.report)renderReport(j.report);if(j.error)message(j.error);else if(mode==='history')message('航班查詢已完成，價格紀錄已更新。');}catch(e){active=null;sessionStorage.removeItem('fare-job');$('progress').hidden=true;$('submit').disabled=false;message(e.message);}}
+function chart(days){const priced=days.filter(d=>d.last_price!=null);if(!priced.length)return '<p>尚無可繪製的報價。</p>';const lo=Math.min(...priced.map(d=>d.last_price)),hi=Math.max(...priced.map(d=>d.last_price)),start=Date.parse(days[0].date),span=Math.max(86400000,Date.parse(days.at(-1).date)-start);let previous=null,parts=[];for(const d of days){if(d.last_price==null){previous=null;continue;}const x=65+(Date.parse(d.date)-start)/span*650,y=155-(d.last_price-lo)/Math.max(hi-lo,1)*110;if(previous)parts.push(`<line x1="${previous[0]}" y1="${previous[1]}" x2="${x}" y2="${y}" stroke="#16665b" stroke-width="3"/>`);parts.push(`<circle cx="${x}" cy="${y}" r="5" fill="#16665b"><title>${esc(d.date)} ${money(d.last_price)}</title></circle>`);previous=[x,y];}return '<div class="chart"><svg viewBox="0 0 780 210" role="img" aria-label="每日最後報價走勢"><text x="5" y="25">'+money(hi)+'</text>'+parts.join('')+'<text x="65" y="195">'+esc(days[0].date)+'</text><text x="620" y="195">'+(days.length>1?esc(days.at(-1).date):'')+'</text></svg></div>'+(days.length===1?'<p class="meta">目前只有一天的紀錄；累積更多天後就能看出每日走勢。</p>':'');}
+async function history(){const q=new URLSearchParams({origin:$('origin').value,destination:$('destination').value});if($('history-date').value)q.set('depart',$('history-date').value);if($('flight').value)q.set('flight',$('flight').value.trim());const r=await api('/api/history?'+q);if(!r.series.length){$('results').innerHTML='<section class="empty"><h2>還沒有符合條件的紀錄</h2><p>先查一次航班，或調整搭乘日期與航班號。</p></section>';return;}const series=r.series.sort((a,b)=>(a.identity_quality==='schedule_only')-(b.identity_quality==='schedule_only'));$('results').innerHTML='<section class="panel"><h2>同一航班，價格怎麼變？</h2><label>選擇航班<select id="history-select" class="history-select">'+series.map((s,i)=>'<option value="'+i+'">'+esc(s.depart_date+' · '+airlineName(s.airline)+' '+(s.flights.join(' / ')||'未確認班號'))+'</option>').join('')+'</select></label><div id="history-detail"></div></section>';function draw(){const s=series[Number($('history-select').value)],statuses={quoted:'已報價',schedule_only:'未報價',not_returned:'最近查詢未回傳此班',query_failed_or_partial:'最近查詢失敗或不完整',identity_unconfirmed:'最近查詢未確認班號'};$('history-detail').innerHTML='<p class="meta">最後觀測：'+stamp(s.latest_fetched_at)+' · '+esc(statuses[s.latest_status]||s.latest_status)+'</p><div class="metrics"><div class="metric">最後觀測價<h2>'+money(s.latest_observed_price)+'</h2></div><div class="metric">歷史最低<h2>'+money(s.lowest)+'</h2></div><div class="metric">較前次有價紀錄<h2>'+delta(s.change)+'</h2></div></div>'+chart(s.daily)+table(['報價日（台灣）','當日最後價','較前個有價日','當日最低','當日最高','次數'],s.daily.map(d=>[esc(d.date),money(d.last_price),delta(d.change_from_previous_quoted_day),money(d.min_price),money(d.max_price),d.samples]))+'<details><summary>每次查詢紀錄（'+s.sample_count+' 次）</summary>'+table(['查詢時間（台灣）','票價'],s.observations.map(o=>[stamp(o.fetched_at),money(o.price)]))+'</details>'+(s.identity_quality==='schedule_only'?'<p>此紀錄缺少班號，以航空公司與起降時間區分，尚不能保證為同一航班。</p>':'');} $('history-select').onchange=draw;draw();}
+$('search-form').onsubmit=async e=>{e.preventDefault();message();try{if(mode==='history'){await history();return;}const payload={mode,origin:$('origin').value,destination:$('destination').value,depart:$('depart').value,return_date:$('return-date').value,start:$('start').value,days:Number($('days').value),nights:Number($('nights').value),refresh:$('refresh').checked,details:true};$('submit').disabled=true;const j=await api('/api/search',{method:'POST',headers:{'Content-Type':'application/json','X-Request-Token':document.querySelector('meta[name="request-token"]').content},body:JSON.stringify(payload)});active=j.id;sessionStorage.setItem('fare-job',active);$('progress').hidden=false;poll(active);}catch(e){$('submit').disabled=!!active&&mode!=='history';message(e.message);}};
+(async()=>{try{const c=await api('/api/config');const d=new Date(c.today+'T12:00:00');d.setDate(d.getDate()+1);const tomorrow=d.toISOString().slice(0,10);$('start').value=tomorrow;$('depart').value=c.today<'2027-03-11'?'2027-03-11':tomorrow;const ret=new Date($('depart').value+'T12:00:00');ret.setDate(ret.getDate()+4);$('return-date').value=ret.toISOString().slice(0,10);$('history-date').value=$('depart').value;active=sessionStorage.getItem('fare-job');if(active){$('progress').hidden=false;$('submit').disabled=true;poll(active);}}catch(e){message(e.message);}})();
+
+
+function post(url,payload){return api(url,{method:'POST',headers:{'Content-Type':'application/json','X-Request-Token':document.querySelector('meta[name="request-token"]').content},body:JSON.stringify(payload)});}
+function conditions(){return mode==='scan'?{mode,origin:$('origin').value,destination:$('destination').value,start:$('start').value,days:Number($('days').value),nights:Number($('nights').value)}:{mode:'dates',origin:$('origin').value,destination:$('destination').value,depart:$('depart').value,return_date:$('return-date').value};}
+function showWatches(rows){$('watch-list').innerHTML=rows.length?rows.map((w,i)=>'<article class="watch-row"><div><strong>'+esc(w.origin)+' → '+esc(w.destination)+'</strong><p>'+esc(w.mode==='scan'?w.start+' 起 '+w.days+' 天 · 停留 '+w.nights+' 晚':w.depart+(w.return_date?' → '+w.return_date:' · 單程'))+'</p></div><div class="watch-actions"><button class="link-button" data-watch="'+i+'" data-action="query">重新查價</button><button class="link-button" data-watch="'+i+'" data-action="history">價格歷史</button><button class="link-button" data-watch="'+i+'" data-action="remove">移除</button></div></article>').join(''):'<p class="meta">還沒有追蹤航線。填好下方條件，按「追蹤這組條件」。</p>';
+$('watch-list').querySelectorAll('[data-watch]').forEach(b=>b.onclick=async()=>{try{const w=rows[Number(b.dataset.watch)];if(b.dataset.action==='remove'){showWatches(await post('/api/watches/remove',{id:w.id}));return;}$('origin').value=w.origin;$('destination').value=w.destination;if(b.dataset.action==='history'){setMode('history');$('history-date').value=w.mode==='dates'?w.depart:'';$('flight').value='';await history();return;}if(active){message('已有查詢正在執行，請等它完成。');return;}setMode(w.mode);if(w.mode==='dates'){$('depart').value=w.depart;$('return-date').value=w.return_date||'';}else{$('start').value=w.start;$('days').value=w.days;$('nights').value=w.nights;}$('refresh').checked=true;$('search-form').requestSubmit();}catch(e){message(e.message);}});}
+$('save-watch').onclick=async()=>{try{showWatches(await post('/api/watches',conditions()));message('已儲存追蹤條件。按「重新查價」會取得新報價並記錄；每日自動查詢尚未啟用。');}catch(e){message(e.message);}};
+api('/api/watches').then(showWatches).catch(e=>message(e.message));
+api('/api/airports').then(airports=>{for(const id of ['origin','destination']){const input=$(id),box=document.createElement('div');box.className='airport-options';box.id=id+'-options';box.setAttribute('role','listbox');box.hidden=true;input.parentElement.classList.add('airport-field');input.parentElement.append(box);input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-controls',box.id);input.setAttribute('aria-expanded','false');let matches=[],selected=-1;function close(){box.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');}function choose(i){if(!matches[i])return;input.value=matches[i].code;close();}function highlight(){box.querySelectorAll('[role=option]').forEach((el,i)=>{el.setAttribute('aria-selected',i===selected);el.classList.toggle('selected',i===selected);});if(selected>=0)input.setAttribute('aria-activedescendant',id+'-airport-'+selected);}function update(){const q=input.value.trim().toLowerCase();matches=airports.filter(a=>[a.code,a.name,...a.aliases].some(v=>v.toLowerCase().includes(q))).sort((a,b)=>(b.code.toLowerCase()===q)-(a.code.toLowerCase()===q)).slice(0,8);selected=-1;box.innerHTML=matches.length?matches.map((a,i)=>'<div role="option" aria-selected="false" id="'+id+'-airport-'+i+'" data-index="'+i+'"><strong>'+esc(a.code)+'</strong> '+esc(a.name)+'</div>').join(''):'<p>沒有符合的常用機場，可直接輸入三碼 IATA 代碼。</p>';box.hidden=false;input.setAttribute('aria-expanded','true');input.removeAttribute('aria-activedescendant');box.querySelectorAll('[data-index]').forEach(el=>el.onmousedown=e=>{e.preventDefault();choose(Number(el.dataset.index));});}input.addEventListener('input',update);input.addEventListener('focus',update);input.addEventListener('blur',close);input.addEventListener('keydown',e=>{if(e.key==='Escape'){close();return;}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(box.hidden)update();selected=matches.length?(selected+(e.key==='ArrowDown'?1:-1)+matches.length)%matches.length:-1;highlight();}else if(e.key==='Enter'&&!box.hidden&&selected>=0){e.preventDefault();choose(selected);}});}}).catch(e=>message(e.message));

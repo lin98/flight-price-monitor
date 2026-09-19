@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.fare-watch</string>
+
+    <!-- 每天台北時間 08:00 與 20:00 各跑一輪；launchd 用系統時區，請確認 macOS 時區為 Asia/Taipei -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/path/to/flight-price-monitor</string>
+
+    <!-- 走 scripts/run_grouped.sh：分組模式 + playwright 來源 + 分批掃描，
+         直接呼叫 python -m fare_watch 會退回單機場 HTTP 來源，抓不到回程 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/flight-price-monitor/scripts/run_grouped.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TZ</key>
+        <string>Asia/Taipei</string>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <!-- 每輪抓幾格（一格＝一個出發日 × 一個機場）。24 格約 22 分鐘，
+             一天兩輪 48 格，184 格的完整視窗約 4 天輪完一次 -->
+        <key>FARE_WATCH_MAX_FETCHES</key>
+        <string>24</string>
+        <!-- 裝了 playwright 的那一版 python；換機器時記得改 -->
+        <key>FARE_WATCH_PYTHON</key>
+        <string>/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/path/to/flight-price-monitor/data/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/path/to/flight-price-monitor/data/logs/launchd.err.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

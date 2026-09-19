@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- Playwright 渲染後的 Google Flights 來回結果頁（第一階段用的最小樣本）。
+     只保留 parse_result_html() 會讀到的節點；class 名稱與 aria-label 依 Google Flights
+     實際 DOM 命名，尚未對線上頁面校正，第二階段要用真實 capture 覆蓋這份 fixture。 -->
+<html><body>
+<div class="gws-flights-results__result-list">
+<ul>
+
+  <!-- 來回直飛：去程 IT606、回程 IT607 -->
+  <li class="pIav2d">
+    <div class="sSHqwe tPgKwe ogfYpf"><span>Tigerair Taiwan</span></div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 4:50 PM."><span>4:50 PM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 8:00 PM."><span>8:00 PM</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">3 hr 10 min</div>
+      <div class="EfT7Ae"><span class="ogfYpf">TPE</span>–<span class="ogfYpf">PUS</span></div>
+      <div class="VG3hNb">Nonstop</div>
+      <div class="Xsgmwe">IT 606</div>
+    </div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 12:05 PM."><span>12:05 PM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 1:40 PM."><span>1:40 PM</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">2 hr 35 min</div>
+      <div class="EfT7Ae"><span class="ogfYpf">PUS</span>–<span class="ogfYpf">TPE</span></div>
+      <div class="VG3hNb">Nonstop</div>
+      <div class="Xsgmwe">IT 607</div>
+    </div>
+    <div class="YMlIz FpEdX"><span aria-label="7000 New Taiwan dollars">NT$7,000</span></div>
+  </li>
+
+  <!-- 來回直飛：回程跨日抵達（+1），驗證日界標記不會混進時間 -->
+  <li class="pIav2d">
+    <div class="sSHqwe tPgKwe ogfYpf"><span>Air Busan</span></div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 3:00 PM."><span>3:00 PM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 6:25 PM."><span>6:25 PM</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">3 hr 25 min</div>
+      <div class="EfT7Ae"><span class="ogfYpf">KHH</span>–<span class="ogfYpf">PUS</span></div>
+      <div class="VG3hNb">Nonstop</div>
+      <div class="Xsgmwe">BX 586</div>
+    </div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 10:30 PM."><span>10:30 PM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 12:05 AM+1."><span>12:05 AM+1</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">2 hr 35 min</div>
+      <div class="EfT7Ae"><span class="ogfYpf">PUS</span>–<span class="ogfYpf">KHH</span></div>
+      <div class="VG3hNb">Nonstop</div>
+      <div class="Xsgmwe">BX 585</div>
+    </div>
+    <div class="YMlIz FpEdX"><span aria-label="8600 New Taiwan dollars">NT$8,600</span></div>
+  </li>
+
+  <!-- 去程轉機一次：解析得出 stops=1，由呼叫端的直飛條件排除 -->
+  <li class="pIav2d">
+    <div class="sSHqwe tPgKwe ogfYpf"><span>China Airlines</span></div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 10:00 AM."><span>10:00 AM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 8:00 PM."><span>8:00 PM</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">10 hr</div>
+      <div class="EfT7Ae"><span class="ogfYpf">TPE</span>–<span class="ogfYpf">PUS</span></div>
+      <div class="VG3hNb">1 stop</div>
+      <div class="Xsgmwe">CI 188</div>
+      <div class="Xsgmwe">CI 160</div>
+    </div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 2:10 PM."><span>2:10 PM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 3:50 PM."><span>3:50 PM</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">2 hr 40 min</div>
+      <div class="EfT7Ae"><span class="ogfYpf">PUS</span>–<span class="ogfYpf">TPE</span></div>
+      <div class="VG3hNb">Nonstop</div>
+      <div class="Xsgmwe">CI 189</div>
+    </div>
+    <div class="YMlIz FpEdX"><span aria-label="5000 New Taiwan dollars">NT$5,000</span></div>
+  </li>
+
+  <!-- 沒有價格的列（頁面顯示 Price unavailable）：整列略過，不用 0 或推估值填補 -->
+  <li class="pIav2d">
+    <div class="sSHqwe tPgKwe ogfYpf"><span>Jeju Air</span></div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 5:05 PM."><span>5:05 PM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 8:35 PM."><span>8:35 PM</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">3 hr 30 min</div>
+      <div class="EfT7Ae"><span class="ogfYpf">KHH</span>–<span class="ogfYpf">PUS</span></div>
+      <div class="VG3hNb">Nonstop</div>
+      <div class="Xsgmwe">7C 6256</div>
+    </div>
+    <div class="QS0io">
+      <span class="mv1WYe" aria-label="Departure time: 9:20 AM."><span>9:20 AM</span></span>
+      <span class="mv1WYe" aria-label="Arrival time: 10:55 AM."><span>10:55 AM</span></span>
+      <div class="gvkrdb AdWm1c tPgKwe ogfYpf">2 hr 35 min</div>
+      <div class="EfT7Ae"><span class="ogfYpf">PUS</span>–<span class="ogfYpf">KHH</span></div>
+      <div class="VG3hNb">Nonstop</div>
+      <div class="Xsgmwe">7C 6255</div>
+    </div>
+    <div class="YMlIz FpEdX"><span>Price unavailable</span></div>
+  </li>
+
+</ul>
+</div>
+</body></html>
