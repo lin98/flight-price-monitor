@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from fare_watch.dgpa_calendar import upcoming_breaks
+from fare_watch.dgpa_calendar import Calendar, upcoming_breaks
 from fare_watch.fetchers import BlockedError
 from fare_watch.holiday_deals import DESTINATIONS, finish, merge, run
 from fare_watch.web_server import Application, Handler, ThreadingHTTPServer
@@ -99,6 +99,17 @@ def test_origin_inside_default_list_is_skipped(tmp_path):
     report = run('PUS', HOLIDAY, tmp_path, tmp_path / 'h.sqlite3', delay=0, source_factory=source)
     assert 'PUS' not in report['destinations'] and len(source.calls) == (len(DESTINATIONS) - 1) * 4
     assert all(a != b for a, b, _ in source.calls)
+
+
+def test_cli_without_arguments_lists_breaks_without_pricing(tmp_path, monkeypatch, capsys):
+    import fare_watch.holiday_deals as deals
+    monkeypatch.setattr(deals, 'Calendar', lambda directory: Calendar(directory, fake_fetch()))
+    monkeypatch.setattr(deals, 'run', lambda *a, **k: pytest.fail('listing breaks must not query fares'))
+    assert deals.main(['--calendar-dir', str(tmp_path)]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed['errors'] == [] and {'breaks', 'sources'} <= set(listed)
+    with pytest.raises(SystemExit):
+        deals.main(['TPE', '2026-09-25', '--calendar-dir', str(tmp_path)])
 
 
 def test_second_run_uses_cache(tmp_path):

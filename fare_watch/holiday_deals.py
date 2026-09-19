@@ -1,6 +1,7 @@
 """連假便宜機票：對一個連假的幾種請假走法，比較多個直飛目的地的兩張單程合計。
 
-Run: python -m fare_watch.holiday_deals TPE 2026-09-25 2026-09-28
+Run: python -m fare_watch.holiday_deals                              # 列出即將到來的連假（JSON，不查價）
+     python -m fare_watch.holiday_deals TPE 2026-09-25 2026-09-28    # 查這個連假
 
 查價、快取、被擋就停的規則全部沿用 `search.py`；這裡只多做「多個目的地 × 連假走法」的編排。
 """
@@ -146,15 +147,25 @@ def finish(report, output):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description='連假便宜機票：依人事行政總處辦公日曆的連假，比較多個直飛目的地')
-    p.add_argument('origin', type=airport)
-    p.add_argument('start', type=iso_date, help='連假第一天 YYYY-MM-DD')
-    p.add_argument('end', type=iso_date, help='連假最後一天 YYYY-MM-DD')
-    p.add_argument('--output', default='data/deals')
+    p.add_argument('origin', nargs='?', type=airport, help='出發機場；三個位置參數都省略時只列出即將到來的連假')
+    p.add_argument('start', nargs='?', type=iso_date, help='連假第一天 YYYY-MM-DD')
+    p.add_argument('end', nargs='?', type=iso_date, help='連假最後一天 YYYY-MM-DD')
+    p.add_argument('--output', help='報告目錄，預設 data/deals/<出發地>-<起>-<迄>')
+    p.add_argument('--json', action='store_true', help='stdout 輸出完整報告 JSON')
     p.add_argument('--history-db', default='data/search/history.sqlite3')
     p.add_argument('--calendar-dir', default='data/holidays')
     p.add_argument('--refresh', action='store_true')
     p.add_argument('--destination', type=airport, help='只查這一個目的地，結果併進既有報告（預設查內建的熱門地點）')
     args = p.parse_args(argv)
+    if args.origin is None:
+        # 不帶參數＝問「有哪些連假可以查」。命令列與 agent 需要這個入口，不然只有網頁知道日期
+        loaded = Calendar(args.calendar_dir).load()
+        print(json.dumps({'breaks': upcoming_breaks(loaded['days'], date.today()), 'sources': loaded['sources'],
+                          'errors': loaded['errors']}, ensure_ascii=False, indent=2))
+        return 0 if loaded['days'] else 2
+    if args.start is None or args.end is None:
+        p.error('查價需要 出發機場、連假第一天、連假最後一天 三個參數')
+    args.output = args.output or f'data/deals/{args.origin}-{args.start}-{args.end}'
     try:
         holiday = find_break(args.calendar_dir, args.start, args.end)
     except ValueError as exc:
@@ -172,8 +183,12 @@ def main(argv=None):
                          on_progress=lambda r: write(combine(r), args.output, 'partial.json'),
                          destinations=(args.destination,) if args.destination else DESTINATIONS))
     finish(report, args.output)
-    for d in report['deals'][:10]:
-        print(f'{d["destination"]} {d["depart"]}→{d["return"]} 請假{d["leave_days"]}天 {d["price"]:,}')
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        for d in report['deals'][:10]:
+            print(f'{d["destination"]} {d["depart"]}→{d["return"]} 請假{d["leave_days"]}天 {d["price"]:,}')
+        print(f'報告：{args.output}/latest.json', file=sys.stderr)
     return 0 if report['deals'] and not report['aborted_reason'] and report['successful_queries'] == report['requested_queries'] else 2
 
 

@@ -314,10 +314,16 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     p = argparse.ArgumentParser(description='啟動本機機票查詢網頁')
     p.add_argument('--port', type=int, default=8765)
+    p.add_argument('--no-open', action='store_true', help='啟動後不自動開瀏覽器（給排程、遠端或 agent 用）')
     args = p.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     server.app = Application()
-    print(f'機票查詢網頁：http://127.0.0.1:{server.server_port}（Ctrl+C 停止）', flush=True)
+    url = f'http://127.0.0.1:{server.server_port}'
+    print(f'機票查詢網頁：{url}（Ctrl+C 停止）', flush=True)
+    if not args.no_open:
+        import webbrowser
+        # 等 serve_forever 開始收連線再開，不然瀏覽器會先看到連線失敗
+        threading.Timer(0.5, webbrowser.open, [url]).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
