@@ -9,7 +9,7 @@
 
 ## 開始使用
 
-需要 macOS 或 Linux、Python 3.9 以上。兩種用法，挑一種：
+需要 Python 3.9 以上，macOS、Linux、Windows 都可以。兩種用法，挑一種：
 
 ### 1. 交給 AI agent（最省事）
 
@@ -29,6 +29,9 @@ cd flight-price-monitor
 ```
 
 就這樣。第一次執行會自動安裝（約 1 分鐘），之後瀏覽器會自己打開。要停止按 Ctrl+C，下次再跑同一行。
+
+**Windows**：最後一行改成 `scripts\web.bat`（或在檔案總管裡雙擊它）。Windows 這條路還沒有在實機上驗證過，
+遇到問題請[開 issue](https://github.com/lin98/flight-price-monitor/issues)；用 WSL 的話照上面三行即可。
 
 ## 網頁怎麼用
 

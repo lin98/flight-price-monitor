@@ -5,6 +5,7 @@ import argparse
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import secrets
 import subprocess
@@ -88,7 +89,7 @@ class Application:
     def watches(self):
         path = self.data_dir / 'web' / 'watches.json'
         with self.lock:
-            return json.loads(path.read_text()) if path.exists() else []
+            return json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
 
     def save_watch(self, payload):
         if not isinstance(payload, dict):
@@ -98,7 +99,7 @@ class Application:
         item.update(origin=airport(payload['origin']), destination=airport(payload['destination']))
         path = self.data_dir / 'web' / 'watches.json'
         with self.lock:
-            rows = json.loads(path.read_text()) if path.exists() else []
+            rows = json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
             if any(all(r.get(k) == v for k, v in item.items()) for r in rows):
                 return rows
             if len(rows) >= 100:
@@ -107,18 +108,18 @@ class Application:
             rows.append(item)
             path.parent.mkdir(parents=True, exist_ok=True)
             temp = path.with_suffix('.tmp')
-            temp.write_text(json.dumps(rows, ensure_ascii=False))
+            temp.write_text(json.dumps(rows, ensure_ascii=False), encoding='utf-8')
             temp.replace(path)
             return rows
 
     def remove_watch(self, watch_id):
         path = self.data_dir / 'web' / 'watches.json'
         with self.lock:
-            rows = json.loads(path.read_text()) if path.exists() else []
+            rows = json.loads(path.read_text(encoding='utf-8')) if path.exists() else []
             rows = [r for r in rows if r['id'] != watch_id]
             path.parent.mkdir(parents=True, exist_ok=True)
             temp = path.with_suffix('.tmp')
-            temp.write_text(json.dumps(rows, ensure_ascii=False))
+            temp.write_text(json.dumps(rows, ensure_ascii=False), encoding='utf-8')
             temp.replace(path)
             return rows
 
@@ -149,7 +150,7 @@ class Application:
         with self.lock:
             running = next((j['id'] for j in self.jobs.values()
                             if j['state'] == 'running' and j['output'] == str(output)), None)
-        return {'report': json.loads(path.read_text()) if path.exists() else None, 'job': running}
+        return {'report': json.loads(path.read_text(encoding='utf-8')) if path.exists() else None, 'job': running}
 
     def start_deals(self, payload):
         origin, start, end, output = self.deals_request(payload)
@@ -180,18 +181,20 @@ class Application:
     def execute(self, job_id, args, output):
         try:
             output.mkdir(parents=True, exist_ok=True)
+            # 每次查詢的輸出目錄都不同，快取要共用才有意義。用參數傳而不是 symlink：
+            # Windows 一般使用者沒有建立 symlink 的權限
             shared_cache = self.data_dir / 'web' / 'cache'
-            shared_cache.mkdir(parents=True, exist_ok=True)
-            if not (output / 'cache').exists():
-                (output / 'cache').symlink_to(shared_cache.resolve(), target_is_directory=True)
-            process = subprocess.Popen([sys.executable, '-m', self.jobs[job_id]['module'], *args], cwd=ROOT,
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            # 子程序的進度訊息有中文；Windows 主控台預設不是 UTF-8，兩端都明講才不會解碼失敗
+            process = subprocess.Popen([sys.executable, '-m', self.jobs[job_id]['module'], *args,
+                                        '--cache-dir', str(shared_cache)], cwd=ROOT,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+                                       encoding='utf-8', errors='replace', env={**os.environ, 'PYTHONUTF8': '1'})
             for line in process.stderr:
                 with self.lock:
                     self.jobs[job_id]['logs'] = (self.jobs[job_id]['logs'] + [line.strip()])[-20:]
             code = process.wait()
             report_path = output / 'latest.json'
-            report = json.loads(report_path.read_text()) if report_path.exists() else None
+            report = json.loads(report_path.read_text(encoding='utf-8')) if report_path.exists() else None
             with self.lock:
                 job = self.jobs[job_id]
                 job.update(report=report, state='completed' if code == 0 else 'partial' if report else 'failed',
@@ -208,7 +211,7 @@ class Application:
             job = dict(self.jobs[job_id])
         partial = Path(job['output']) / 'partial.json'
         if job['state'] == 'running' and job['module'].endswith('holiday_deals') and partial.exists():
-            job['report'] = json.loads(partial.read_text())
+            job['report'] = json.loads(partial.read_text(encoding='utf-8'))
         return {k: v for k, v in job.items() if k not in ('output', 'module')}
 
 

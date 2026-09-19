@@ -68,3 +68,35 @@ def test_airport_choices_disambiguate_cities():
     assert len({r['code'] for r in rows}) == len(rows)
     assert {r['code'] for r in rows if 'Tokyo' in r['name']} == {'NRT', 'HND'}
     assert '台北' in next(r['aliases'] for r in rows if r['code'] == 'TPE')
+
+
+def test_job_shares_cache_by_argument_not_symlink(tmp_path, monkeypatch):
+    """Windows 一般使用者建不了 symlink；共用快取要走 --cache-dir，子程序輸出也要明講 UTF-8。"""
+    import fare_watch.web_server as web
+    seen = {}
+
+    class FakeProcess:
+        stderr = ['[1/2] 2027-03-11 TPE→PUS ok (live)\n']
+        def wait(self):
+            return 2
+
+    def fake_popen(command, **options):
+        seen.update(command=command, options=options)
+        return FakeProcess()
+    monkeypatch.setattr(web.subprocess, 'Popen', fake_popen)
+    app = Application(tmp_path)
+    output = tmp_path / 'web' / 'runs' / 'job'
+    app.jobs['job'] = {'id': 'job', 'state': 'running', 'logs': [], 'output': str(output), 'report': None,
+                       'error': '', 'module': 'fare_watch.search'}
+    app.execute('job', ['TPE', 'PUS', '2027-03-11'], output)
+    assert seen['command'][-2:] == ['--cache-dir', str(tmp_path / 'web' / 'cache')]
+    assert seen['options']['encoding'] == 'utf-8' and seen['options']['env']['PYTHONUTF8'] == '1'
+    assert not (output / 'cache').exists()
+    assert app.jobs['job']['state'] == 'failed' and app.jobs['job']['logs'] == ['[1/2] 2027-03-11 TPE→PUS ok (live)']
+
+
+def test_cache_dir_argument_overrides_output_cache(tmp_path):
+    from fare_watch.search import parser
+    args = parser().parse_args(['TPE', 'PUS', '2027-03-11', '--output', str(tmp_path / 'out'), '--cache-dir', str(tmp_path / 'shared')])
+    assert args.cache_dir == str(tmp_path / 'shared')
+

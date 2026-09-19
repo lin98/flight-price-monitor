@@ -79,10 +79,10 @@ def merge(old, new):
 
 
 def run(origin, holiday, output, history_db, refresh=False, cache_hours=6, delay=2,
-        source_factory=BrowserSource, on_progress=None, destinations=DESTINATIONS):
+        source_factory=BrowserSource, on_progress=None, destinations=DESTINATIONS, cache_dir=None):
     from .price_history import History
     output = Path(output)
-    cache = Cache(output / 'cache', 0 if refresh else cache_hours)
+    cache = Cache(cache_dir or output / 'cache', 0 if refresh else cache_hours)
     history = History(history_db)
     departs = sorted({o['depart'] for o in holiday['options']})
     returns = sorted({o['return'] for o in holiday['options']})
@@ -155,6 +155,7 @@ def main(argv=None):
     p.add_argument('--history-db', default='data/search/history.sqlite3')
     p.add_argument('--calendar-dir', default='data/holidays')
     p.add_argument('--refresh', action='store_true')
+    p.add_argument('--cache-dir', help='快取目錄，預設 <output>/cache')
     p.add_argument('--destination', type=airport, help='只查這一個目的地，結果併進既有報告（預設查內建的熱門地點）')
     args = p.parse_args(argv)
     if args.origin is None:
@@ -181,7 +182,8 @@ def main(argv=None):
     combine = (lambda r: merge(previous, r)) if previous else (lambda r: r)
     report = combine(run(args.origin, holiday, args.output, args.history_db, args.refresh,
                          on_progress=lambda r: write(combine(r), args.output, 'partial.json'),
-                         destinations=(args.destination,) if args.destination else DESTINATIONS))
+                         destinations=(args.destination,) if args.destination else DESTINATIONS,
+                         cache_dir=args.cache_dir))
     finish(report, args.output)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))

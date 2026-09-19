@@ -216,7 +216,7 @@ class Cache:
         if self.hours <= 0:
             return None
         try:
-            result = json.loads(self.path(origin, destination, day, details).read_text())
+            result = json.loads(self.path(origin, destination, day, details).read_text(encoding='utf-8'))
             age = datetime.now(timezone.utc) - datetime.fromisoformat(result['fetched_at'])
             if not timedelta(0) <= age <= timedelta(hours=self.hours) or result['status'] != 'ok':
                 return None
@@ -230,7 +230,7 @@ class Cache:
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.path(result['origin'], result['destination'], result['date'], details)
         tmp = path.with_suffix('.tmp')
-        tmp.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+        tmp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         tmp.replace(path)
 
 
@@ -271,7 +271,7 @@ def plan(args, today=None):
 def run(args, source_factory=BrowserSource, today=None):
     pairs = plan(args, today)
     details = bool(args.depart) or getattr(args, "details", False)
-    cache = Cache(Path(args.output) / 'cache', 0 if args.refresh else args.cache_hours)
+    cache = Cache(getattr(args, 'cache_dir', None) or Path(args.output) / 'cache', 0 if args.refresh else args.cache_hours)
     jobs = list(dict.fromkeys((a, b, d) for depart, ret in pairs
                              for a, b, d in [(args.origin, args.destination, depart)] +
                              ([(args.destination, args.origin, ret)] if ret else [])))
@@ -396,6 +396,7 @@ def parser():
     p.add_argument('--refresh', action='store_true', help='忽略快取，重新連線查詢')
     p.add_argument('--delay', type=float, default=2, help='每次連網查詢之間間隔秒數，預設 2')
     p.add_argument('--output', default='data/search', help='報告與快取目錄')
+    p.add_argument('--cache-dir', help='快取目錄，預設 <output>/cache；多個輸出目錄要共用快取時指定')
     p.add_argument('--history-db', default='data/search/history.sqlite3', help='永久報價歷史資料庫，與快取分開')
     p.add_argument('--details', action='store_true', help='掃描模式也抓航班號，以精確追蹤同一航班（較慢）')
     p.add_argument('--json', action='store_true', help='stdout 輸出 JSON')

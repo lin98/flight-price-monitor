@@ -4,6 +4,10 @@
 
 以下 `python` 指令請先 `source .venv/bin/activate`；`scripts/` 底下的 script 會自己用 `.venv`，不需要先啟用。
 
+**平台**：在 macOS 上開發與測試。程式本身不依賴 POSIX 專屬功能（不用 symlink、檔案讀寫一律明寫 UTF-8、
+Windows 會另外安裝 `tzdata` 提供時區資料），Windows 入口是 `scripts\web.bat`，但**尚未在 Windows 實機驗證**。
+排程一節的 launchd 只適用 macOS。
+
 ## 定點監測（最早的功能）
 
 固定監測 TPE/KHH→PUS、2027/3–5 月的 5 天 4 夜行程。以下 `python` 指令請先啟用 `scripts/setup.sh` 建好的環境：
@@ -218,7 +222,7 @@ pip install flights        # 想用才裝；不裝就一直走 google_playwright
 .venv/bin/python -m pytest
 ```
 
-166 個測試，全部離線（瀏覽器層在測試裡被替身取代，解析層吃 `tests/fixtures/` 的頁面快照）。
+168 個測試，全部離線（瀏覽器層在測試裡被替身取代，解析層吃 `tests/fixtures/` 的頁面快照）。
 fixture 只用來測解析，不會出現在 production 路徑。
 
 `tests/fixtures/dgpa_calendar_2026.csv`、`dgpa_calendar_2027.csv` 是行政院人事行政總處發布的

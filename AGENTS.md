@@ -12,6 +12,10 @@
 `scripts/` 底下的 script 一律自己挑直譯器（`FARE_WATCH_PYTHON` → `.venv` → `python3`），**不要**自己 `pip install` 到系統 Python。
 所有指令從專案根目錄執行。
 
+**Windows（沒有 bash）**：安裝與開網頁用 `scripts\web.bat`；其餘指令把 `./scripts/xxx.sh` 換成對應的模組，並先設 `PYTHONUTF8=1`：
+`search.sh` → `.venv\Scripts\python -m fare_watch.search`、`holidays.sh` → `.venv\Scripts\python -m fare_watch.holiday_deals`，參數完全相同。
+Windows 這條路尚未在實機驗證；出錯時把完整錯誤訊息回報給使用者，不要自行改用別的資料來源。
+
 ## 使用者想做什麼 → 你該跑什麼
 
 | 使用者的話 | 指令 |
@@ -86,7 +90,7 @@ ranked[]                  dates[] 裡有價格的那些，便宜到貴；掃描�
 ## 改程式
 
 ```bash
-.venv/bin/python -m pytest        # 166 個測試，全部離線，約 2 秒。改完一定要全過
+.venv/bin/python -m pytest        # 168 個測試，全部離線，約 2 秒。改完一定要全過
 ```
 
 | 檔案 | 職責 |
