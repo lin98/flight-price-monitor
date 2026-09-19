@@ -24,6 +24,10 @@
 .ticket-row small{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .ticket-row strong{font-size:18px;font-variant-numeric:tabular-nums}
 .ticket-row .ticket-price{color:var(--price)}
+.holiday-search{display:grid;grid-template-columns:1fr 1.4fr auto;gap:16px;align-items:end;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow)}
+.holiday-search .primary{min-height:47px;border-radius:12px}
+.holiday-search .primary span{margin-left:8px}
+@media(max-width:860px){.holiday-search{grid-template-columns:1fr}}
 .section-title{font-size:20px;margin:34px 0 14px;letter-spacing:-.3px}
 .section-note{margin:-6px 0 14px;color:var(--muted);font-size:13px}
 .result-head .section-title{margin:0}

@@ -1,9 +1,11 @@
 // 首頁「連假便宜機票」：連假來自人事行政總處辦公日曆表，價格來自與其他分頁相同的單程查價。
 // 依賴 app.js 的 $、esc、money、stamp、api、post、table、airlineName、setMode。
 // CSP 不允許 inline style，所以每個目的地的封面顏色都是 style.css 裡的 .dest-XXX class。
-const HOLIDAY_ORIGIN='TPE';
+const holidayOrigin=()=>$('holiday-origin').value.trim()||'TPE';
 const places={OKA:['沖繩','日本 · 海島度假'],KIX:['大阪','日本 · 關西美食與古都'],NRT:['東京','日本 · 成田機場'],FUK:['福岡','日本 · 九州玄關'],ICN:['首爾','韓國 · 仁川機場'],PUS:['釜山','韓國 · 港都海景'],HKG:['香港','香港 · 週末快閃'],BKK:['曼谷','泰國 · 夜市與按摩']};
-const placeName=code=>(places[code]||[code])[0];
+// 使用者自己加的地點不在 places 裡，名稱退回機場清單（取中文那段），再不行才顯示代碼
+let airportNames={};
+const placeName=code=>(places[code]||[airportNames[code]||code])[0];
 const weekdays='日一二三四五六';
 const shortDate=v=>{const d=new Date(v+'T12:00:00');return (d.getMonth()+1)+'/'+d.getDate()+'('+weekdays[d.getDay()]+')';};
 const leaveText=n=>n?'請 '+n+' 天假':'不用請假';
@@ -28,7 +30,7 @@ $('break-options').querySelectorAll('[data-option]').forEach(el=>el.onclick=()=>
 function legRow(label,f){return '<div class="deal-leg"><span class="deal-leg-label">'+label+'</span><span class="deal-leg-airline">'+esc(airlineName(f.airline))+'</span><span class="time">'+esc(f.depart_time)+' → '+esc(f.arrive_time)+'</span></div>';}
 
 function dealCard(code,d,rank,running){
-const [name,tagline]=places[code]||[code,''];
+const [name,tagline]=places[code]||[placeName(code),'你加入的地點'];
 const cover='<div class="deal-cover dest-'+esc(code)+'">'+(rank===0&&d?'<span class="deal-rank">最便宜</span>':'')+'<span class="deal-code" aria-hidden="true">'+esc(code)+'</span><h3>'+esc(name)+'</h3><p>'+esc(tagline)+'</p></div>';
 if(!d)return '<article class="deal'+(running?' loading':' empty-deal')+'">'+cover+'<div class="deal-body">'+(running?'<div class="skeleton wide"></div><div class="skeleton"></div><div class="skeleton"></div><p class="deal-wait">查價中…</p>':'<p class="deal-wait">這個走法沒有取得報價，不代表沒有航班。</p>')+'</div></article>';
 return '<article class="deal">'+cover+'<div class="deal-body"><p class="deal-price"><small>每人 · 兩張單程合計</small><strong>'+money(d.price)+'</strong><span>起</span></p><p class="deal-dates">'+shortDate(d.depart)+' – '+shortDate(d.return)+' · 共 '+d.total_days+' 天 <span class="tag'+(d.leave_days?'':' tag-ok')+'">'+leaveText(d.leave_days)+'</span></p>'+legRow('去',d.outbound)+legRow('回',d.inbound)+'<button type="button" class="primary deal-cta" data-deal="'+esc(code+'|'+optionKey(d))+'">看全部航班 <span aria-hidden="true">→</span></button></div></article>';
@@ -43,7 +45,7 @@ for(const d of pool)if(!best.has(d.destination))best.set(d.destination,d);
 const order=[...best.keys()].concat((report.destinations||[]).filter(c=>!best.has(c)));
 let html='<div class="result-head"><h2 class="section-title">'+(holidayOption?'這樣請假，可以去哪裡':'便宜地點排行')+'</h2><span class="tag">報價時間 '+stamp(report.generated_at)+'</span></div>';
 html+='<div class="deal-grid">'+order.map((code,i)=>dealCard(code,best.get(code),i,running)).join('')+'</div>';
-html+='<p class="status-note">台北桃園出發 · 1 位成人 · 經濟艙 · 直飛 · 兩張單程相加，不是來回套票；行李與票規需另外確認。已完成 '+report.completed_queries+' / '+report.requested_queries+' 次查詢。</p>';
+html+='<p class="status-note">'+esc(report.origin)+' 出發 · 1 位成人 · 經濟艙 · 直飛 · 兩張單程相加，不是來回套票；行李與票規需另外確認。已完成 '+report.completed_queries+' / '+report.requested_queries+' 次查詢。</p>';
 if(report.aborted_reason)html+='<p class="status-note">本輪提前停止：'+esc(report.aborted_reason)+'</p>';
 if(deals.length)html+='<details class="panel"><summary>所有地點 × 請假走法（'+deals.length+' 組）</summary>'+table(['地點','日期','每人兩張單程合計','去程','回程'],deals.map(d=>['<strong>'+esc(placeName(d.destination))+'</strong> <small>'+esc(d.destination)+'</small>',shortDate(d.depart)+' – '+shortDate(d.return)+'<small>共 '+d.total_days+' 天 · '+leaveText(d.leave_days)+'</small>','<strong class="price">'+money(d.price)+'</strong>',esc(airlineName(d.outbound.airline))+'<br><span class="time">'+esc(d.outbound.depart_time)+' → '+esc(d.outbound.arrive_time)+'</span>',esc(airlineName(d.inbound.airline))+'<br><span class="time">'+esc(d.inbound.depart_time)+' → '+esc(d.inbound.arrive_time)+'</span>']))+'</details>';
 box.innerHTML=html;
@@ -59,7 +61,7 @@ $('hero-ticket').hidden=false;
 }
 
 function setDeals(report,running,b){holidayReport=report;holidayRunning=running;renderDeals();if(b===holidayBreaks[0])renderTicket(report);}
-function holidayBusy(on,line){$('holiday-progress').hidden=!on;$('refresh-deals').disabled=on;if(line)$('holiday-progress-line').textContent=line;}
+function holidayBusy(on,line){$('holiday-progress').hidden=!on;$('refresh-deals').disabled=on;$('holiday-submit').disabled=on;if(line)$('holiday-progress-line').textContent=line;}
 
 async function pollDeals(id,b){
 try{
@@ -72,16 +74,16 @@ setDeals(holidayReport,false,b);holidayBusy(false);$('refresh-deals').textConten
 }catch(e){setDeals(holidayReport,false,b);holidayBusy(false);holidayMessage(e.message);}
 }
 
-async function startDeals(b,refresh){
+async function startDeals(b,refresh,destination=''){
 holidayMessage();
-try{const j=await post('/api/deals',{origin:HOLIDAY_ORIGIN,start:b.start,end:b.end,refresh});holidayBusy(true,'正在連線查詢，請稍候…');setDeals(holidayReport,true,b);pollDeals(j.id,b);}
+try{const j=await post('/api/deals',{origin:holidayOrigin(),start:b.start,end:b.end,refresh,destination});holidayBusy(true,'正在連線查詢，請稍候…');setDeals(holidayReport,true,b);pollDeals(j.id,b);}
 catch(e){holidayMessage(e.message);}
 }
 
 async function pickBreak(b,autoStart){
 holidayPick=b;holidayOption='';holidayMessage();renderBreaks();renderOptions(b);holidayBusy(false);$('refresh-deals').hidden=false;
 try{
-const q=new URLSearchParams({origin:HOLIDAY_ORIGIN,start:b.start,end:b.end}),r=await api('/api/deals?'+q);
+const q=new URLSearchParams({origin:holidayOrigin(),start:b.start,end:b.end}),r=await api('/api/deals?'+q);
 if(b!==holidayPick)return;
 setDeals(r.report,!!r.job,b);
 $('refresh-deals').textContent=r.report?'重新查價':'查這個連假的機票';
@@ -92,6 +94,11 @@ else if(!r.report&&autoStart)startDeals(b,false);
 }
 
 $('refresh-deals').onclick=()=>{if(holidayPick)startDeals(holidayPick,true);};
+// 有填目的地：只多查那一個地點並併進排行。沒填：比較內建的熱門地點（6 小時內查過的走快取，不會重打來源）
+$('holiday-form').onsubmit=e=>{e.preventDefault();if(holidayPick)startDeals(holidayPick,false,$('holiday-destination').value.trim());};
+// 換出發地就換一份報告：先顯示那個出發地上次的結果，沒有才等使用者按比較
+$('holiday-origin').addEventListener('change',()=>{if(holidayPick)pickBreak(holidayPick,false);});
+api('/api/airports').then(rows=>{for(const a of rows)airportNames[a.code]=a.aliases[0]||a.name.split(' ')[0];if(holidayReport)renderDeals();}).catch(()=>{});
 
 (async()=>{
 try{

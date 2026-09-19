@@ -9,7 +9,7 @@ import pytest
 
 from fare_watch.dgpa_calendar import upcoming_breaks
 from fare_watch.fetchers import BlockedError
-from fare_watch.holiday_deals import DESTINATIONS, finish, run
+from fare_watch.holiday_deals import DESTINATIONS, finish, merge, run
 from fare_watch.web_server import Application, Handler, ThreadingHTTPServer
 from test_dgpa_calendar import days_of, fake_fetch
 
@@ -35,7 +35,7 @@ class FakeSource:
         self.calls.append((origin, destination, day.isoformat()))
         if len(self.calls) == self.block_at:
             raise BlockedError('captcha')
-        far = 'BKK' in (origin, destination)
+        far = bool({'BKK', 'CTS'} & {origin, destination})
         flight = {'airline': 'Test Air', 'depart_date': day.isoformat(), 'arrive_date': day.isoformat(),
                   'depart_time': '09:00', 'arrive_time': '12:00', 'flights': [],
                   'price': None if 'HKG' in (origin, destination) else PRICES[day.isoformat()] + (4000 if far else 0)}
@@ -78,6 +78,29 @@ def test_aborted_refresh_keeps_previous_complete_report(tmp_path):
     assert json.loads((tmp_path / 'fresh' / 'latest.json').read_text())['aborted_reason'] == 'captcha'
 
 
+def test_extra_destination_queries_only_itself_and_merges(tmp_path):
+    full = run('TPE', HOLIDAY, tmp_path, tmp_path / 'h.sqlite3', delay=0, source_factory=FakeSource())
+    source = FakeSource()
+    extra = run('TPE', HOLIDAY, tmp_path, tmp_path / 'h.sqlite3', delay=0, source_factory=source, destinations=('CTS',))
+    assert len(source.calls) == 4 and {c[1] for c in source.calls} | {c[0] for c in source.calls} == {'TPE', 'CTS'}
+    merged = merge(full, extra)
+    assert merged['destinations'] == list(DESTINATIONS) + ['CTS']
+    assert merged['requested_queries'] == merged['completed_queries'] == merged['successful_queries'] == 36
+    assert [d['price'] for d in merged['deals']] == sorted(d['price'] for d in merged['deals'])
+    assert len([d for d in merged['deals'] if d['destination'] == 'CTS']) == 4
+    # 同一個地點再查一次是取代，不是疊加
+    again = merge(merged, extra)
+    assert again['destinations'] == merged['destinations'] and len(again['deals']) == len(merged['deals'])
+    assert again['completed_queries'] == 36
+
+
+def test_origin_inside_default_list_is_skipped(tmp_path):
+    source = FakeSource()
+    report = run('PUS', HOLIDAY, tmp_path, tmp_path / 'h.sqlite3', delay=0, source_factory=source)
+    assert 'PUS' not in report['destinations'] and len(source.calls) == (len(DESTINATIONS) - 1) * 4
+    assert all(a != b for a, b, _ in source.calls)
+
+
 def test_second_run_uses_cache(tmp_path):
     run('TPE', HOLIDAY, tmp_path, tmp_path / 'h.sqlite3', delay=0, source_factory=FakeSource())
     again = FakeSource()
@@ -116,6 +139,11 @@ def test_http_holidays_and_deals(tmp_path, monkeypatch):
         job = json.load(post(dict(origin='TPE', start='2026-09-25', end='2026-09-28')))
         assert started[0][:3] == ['TPE', '2026-09-25', '2026-09-28'] and '--refresh' not in started[0]
         assert json.load(urlopen(base + '/api/jobs/' + job['id']))['state'] == 'completed'
+        post(dict(origin='台北', start='2026-09-25', end='2026-09-28', destination='札幌', refresh=True))
+        assert started[1][:3] == ['TPE', '2026-09-25', '2026-09-28'] and started[1][-3:] == ['--refresh', '--destination', 'CTS']
+        with pytest.raises(HTTPError) as err:
+            post(dict(origin='TPE', start='2026-09-25', end='2026-09-28', destination='台北'))
+        assert err.value.code == 400
         # 只查日曆上的連假：任意日期不能拿來驅動查價
         with pytest.raises(HTTPError) as err:
             post(dict(origin='TPE', start='2026-11-03', end='2026-11-05'))

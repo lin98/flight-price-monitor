@@ -32,9 +32,6 @@
              一天兩輪 48 格，184 格的完整視窗約 4 天輪完一次 -->
         <key>FARE_WATCH_MAX_FETCHES</key>
         <string>24</string>
-        <!-- 裝了 playwright 的那一版 python；換機器時記得改 -->
-        <key>FARE_WATCH_PYTHON</key>
-        <string>/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11</string>
     </dict>
 
     <key>StandardOutPath</key>

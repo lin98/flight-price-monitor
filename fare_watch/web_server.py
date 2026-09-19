@@ -135,6 +135,14 @@ class Application:
         start, end = iso_date(str(payload.get('start', ''))), iso_date(str(payload.get('end', '')))
         return origin, start, end, self.data_dir / 'web' / 'deals' / f'{origin}-{start}-{end}'
 
+    def deals_destination(self, payload, origin):
+        if not payload.get('destination'):
+            return []
+        destination = airport(str(payload['destination']))
+        if destination == origin:
+            raise ValueError('出發與目的機場不能相同')
+        return ['--destination', destination]
+
     def deals(self, payload):
         origin, start, end, output = self.deals_request(payload)
         path = output / 'latest.json'
@@ -149,6 +157,7 @@ class Application:
             raise ValueError('這不是辦公日曆表上即將到來的連假')
         args = [origin, str(start), str(end), '--output', str(output), '--history-db', str(self.db),
                 '--calendar-dir', str(self.data_dir / 'holidays')] + (['--refresh'] if payload.get('refresh') else [])
+        args += self.deals_destination(payload, origin)
         return self.start(payload, args=args, output=output, module='fare_watch.holiday_deals')
 
     def start(self, payload, args=None, output=None, module='fare_watch.search'):

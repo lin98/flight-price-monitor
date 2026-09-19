@@ -17,10 +17,14 @@ from .dgpa_calendar import Calendar, upcoming_breaks
 from .fetchers import BlockedError
 from .search import BrowserSource, Cache, airport, combinations, iso_date
 
-# 桃園直飛、班次多、連假常見的短程目的地。刻意不做成可設定：
-# 每多一個地點就多 4 次查詢，清單一長首頁就等不到結果。
+# 預設比較的地點：桃園直飛、班次多、連假常見的短程目的地。
+# 清單刻意短：每多一個地點就多 4 次查詢，一長首頁就等不到結果。想看別的地點用 --destination 單獨加。
 DESTINATIONS = ('OKA', 'KIX', 'NRT', 'FUK', 'ICN', 'PUS', 'HKG', 'BKK')
 SCHEMA = 1
+
+
+def deal_order(deal):
+    return deal['price'], deal['leave_days'], deal['destination']
 
 
 def find_break(calendar_dir, start, end, today=None):
@@ -33,9 +37,9 @@ def find_break(calendar_dir, start, end, today=None):
     raise ValueError('找不到這個連假；可能日曆尚未下載，或連假已經開始')
 
 
-def build(origin, holiday, results, aborted=''):
+def build(origin, holiday, results, aborted='', destinations=DESTINATIONS):
     deals, status = [], []
-    for dest in DESTINATIONS:
+    for dest in destinations:
         for option in holiday['options']:
             out = results.get((origin, dest, option['depart']))
             back = results.get((dest, origin, option['return']))
@@ -50,26 +54,40 @@ def build(origin, holiday, results, aborted=''):
         status.append({'origin': a, 'destination': b, 'date': day, 'status': r['status'],
                        'reason': r.get('reason', ''), 'fetched_at': r.get('fetched_at'),
                        'provenance': r.get('provenance')})
-    requested = len(DESTINATIONS) * (len({o['depart'] for o in holiday['options']}) + len({o['return'] for o in holiday['options']}))
+    requested = len(destinations) * (len({o['depart'] for o in holiday['options']}) + len({o['return'] for o in holiday['options']}))
     return {'schema': SCHEMA, 'kind': 'holiday_deals', 'origin': origin, 'holiday': holiday,
-            'destinations': list(DESTINATIONS), 'currency': 'TWD', 'price_type': 'two_one_way_sum',
+            'destinations': list(destinations), 'currency': 'TWD', 'price_type': 'two_one_way_sum',
             'generated_at': datetime.now(timezone.utc).isoformat(),
             'requested_queries': requested, 'completed_queries': len(results),
             'successful_queries': sum(r['status'] == 'ok' for r in results.values()),
             'aborted_reason': aborted,
-            'deals': sorted(deals, key=lambda d: (d['price'], d['leave_days'], d['destination'])),
+            'deals': sorted(deals, key=deal_order),
             'queries': status}
 
 
+def merge(old, new):
+    """把「只查一個地點」的結果併進既有報告：使用者多加一個想去的地方，不該重跑其他 8 個。"""
+    added = set(new['destinations'])
+    queries = [q for q in old['queries'] if not {q['origin'], q['destination']} & added] + new['queries']
+    destinations = old['destinations'] + [d for d in new['destinations'] if d not in old['destinations']]
+    per_destination = new['requested_queries'] // len(new['destinations'])
+    return dict(new, destinations=destinations, queries=queries,
+                deals=sorted([d for d in old['deals'] if d['destination'] not in added] + new['deals'], key=deal_order),
+                requested_queries=per_destination * len(destinations), completed_queries=len(queries),
+                successful_queries=sum(q['status'] == 'ok' for q in queries))
+
+
 def run(origin, holiday, output, history_db, refresh=False, cache_hours=6, delay=2,
-        source_factory=BrowserSource, on_progress=None):
+        source_factory=BrowserSource, on_progress=None, destinations=DESTINATIONS):
     from .price_history import History
     output = Path(output)
     cache = Cache(output / 'cache', 0 if refresh else cache_hours)
     history = History(history_db)
     departs = sorted({o['depart'] for o in holiday['options']})
     returns = sorted({o['return'] for o in holiday['options']})
-    jobs = [(a, b, day) for dest in DESTINATIONS
+    # 出發地本身若在清單裡（例如從釜山出發）就跳過，不然會查「PUS→PUS」
+    destinations = tuple(d for d in destinations if d != origin)
+    jobs = [(a, b, day) for dest in destinations
             for a, b, day in [(origin, dest, d) for d in departs] + [(dest, origin, d) for d in returns]]
     results, aborted, source = {}, '', None
     try:
@@ -97,7 +115,7 @@ def run(origin, holiday, output, history_db, refresh=False, cache_hours=6, delay
             print(f'[{i+1}/{len(jobs)}] {day} {a}→{b} {result["status"]} ({result["provenance"]})', file=sys.stderr, flush=True)
             # 每查完一個地點（或被擋）就落地一次，網頁才能邊查邊顯示，中途被擋也不會白費
             if on_progress and (aborted or (i + 1) % (len(departs) + len(returns)) == 0):
-                on_progress(build(origin, holiday, results, aborted))
+                on_progress(build(origin, holiday, results, aborted, destinations))
             if aborted:
                 break
             if result['provenance'] == 'live' and i + 1 < len(jobs):
@@ -105,7 +123,7 @@ def run(origin, holiday, output, history_db, refresh=False, cache_hours=6, delay
     finally:
         if source is not None:
             source.__exit__(None, None, None)
-    return build(origin, holiday, results, aborted)
+    return build(origin, holiday, results, aborted, destinations)
 
 
 def write(report, output, name='latest.json'):
@@ -135,13 +153,24 @@ def main(argv=None):
     p.add_argument('--history-db', default='data/search/history.sqlite3')
     p.add_argument('--calendar-dir', default='data/holidays')
     p.add_argument('--refresh', action='store_true')
+    p.add_argument('--destination', type=airport, help='只查這一個目的地，結果併進既有報告（預設查內建的熱門地點）')
     args = p.parse_args(argv)
     try:
         holiday = find_break(args.calendar_dir, args.start, args.end)
     except ValueError as exc:
         p.error(str(exc))
-    report = run(args.origin, holiday, args.output, args.history_db, args.refresh,
-                 on_progress=lambda r: write(r, args.output, 'partial.json'))
+    previous = None
+    if args.destination:
+        if args.destination == args.origin:
+            p.error('出發與目的機場不能相同')
+        try:
+            previous = json.loads((Path(args.output) / 'latest.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            pass
+    combine = (lambda r: merge(previous, r)) if previous else (lambda r: r)
+    report = combine(run(args.origin, holiday, args.output, args.history_db, args.refresh,
+                         on_progress=lambda r: write(combine(r), args.output, 'partial.json'),
+                         destinations=(args.destination,) if args.destination else DESTINATIONS))
     finish(report, args.output)
     for d in report['deals'][:10]:
         print(f'{d["destination"]} {d["depart"]}→{d["return"]} 請假{d["leave_days"]}天 {d["price"]:,}')

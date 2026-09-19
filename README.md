@@ -10,9 +10,47 @@
 
 查不到就說查不到：不估算、不拿舊價格充數；被來源擋下（403／429／驗證碼）就停，不繞過。
 
+## 快速開始
+
+需要 macOS 或 Linux、Python 3.9 以上、git。三行指令：
+
+```bash
+git clone https://github.com/lin98/flight-price-monitor.git
+cd flight-price-monitor
+./scripts/setup.sh    # 只需一次：建 .venv、裝套件、下載查價用的 Chromium（約 150 MB）
+./scripts/web.sh      # 啟動後開 http://127.0.0.1:8765 ，Ctrl+C 停止
+```
+
+打開網頁之後：
+
+1. 首頁會列出最近的連假（資料來自人事行政總處），並自動開始比較 8 個熱門地點，第一次約需數分鐘，查完一個地點就先顯示一個
+2. **出發地**預設台北，可改成高雄等；**想去哪裡**填了（例如「札幌」或 `CTS`）就只多查那一個地點，併進排行
+3. 點上方其他連假、或點「怎麼請假」的走法，看不同日期的價格
+4. 卡片上的「看全部航班」會帶著日期跳到指定日期查價，列出那兩天所有直飛班次
+
+不想開網頁也可以直接查：
+
+```bash
+./scripts/search.sh 台北 大阪 2027-01-20 2027-01-24   # 指定去回日期
+./scripts/search.sh 台北 大阪 --days 14 --nights 4     # 掃描未來 14 天找便宜日期
+```
+
+沒有帳號、沒有 API 金鑰、不用設定檔；所有資料存在專案的 `data/` 目錄。Windows 未測試，建議用 WSL。
+
+<details><summary>裝不起來？</summary>
+
+- `setup.sh` 會自己從 `python3`、`python3.13` … `python3.9` 裡挑第一個**真的能用**的（部分 macOS 上的 Homebrew Python
+  載不了 `pyexpat`，建 venv 會失敗，script 會自動跳過）。都不行就裝 [python.org](https://www.python.org/downloads/) 的版本，
+  或 `FARE_WATCH_PYTHON=/path/to/python3 ./scripts/setup.sh` 指定
+- 可以重複執行；上次裝到一半的 `.venv` 會自動重建
+- 8765 埠被占用：`./scripts/web.sh --port 8800`
+- 查價顯示被擋（403／429／驗證碼）：這是來源的限制，工具會停下來、不會繞過，隔一段時間再試
+
+</details>
+
 ## 畫面
 
-首頁一打開就是最近的連假、請假走法，以及各地點的票價排行：
+首頁一打開就是搜尋列、最近的連假、請假走法，以及各地點的票價排行：
 
 ![連假便宜機票首頁](docs/screenshots/holiday-deals.png)
 
@@ -20,22 +58,17 @@
 
 ![指定日期查價的航班組合](docs/screenshots/search-dates.png)
 
-啟動方式見[本機網頁操作](#本機網頁操作)：`./scripts/web.sh` 後開 http://127.0.0.1:8765 。
+以下是各功能的細節，第一次用可以先跳過。連假功能見[連假便宜機票](#連假便宜機票)。
 
-以下從最早的定點監測功能開始說明；連假功能見[連假便宜機票](#連假便宜機票)。
+## 定點監測（最早的功能）
 
-## 安裝
+固定監測 TPE/KHH→PUS、2027/3–5 月的 5 天 4 夜行程。以下 `python` 指令請先啟用 `scripts/setup.sh` 建好的環境：
 
 ```bash
-pip install -r requirements.txt
-python -m playwright install chromium   # 預設來源要用真實瀏覽器
+source .venv/bin/activate
 ```
 
-實際查價的 `google_playwright` 來源需要 Playwright 與 Chromium。本機裝在
-`/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11`；
-`/opt/homebrew/bin/python3` **沒有**裝，排程請走 `scripts/run_grouped.sh`（會自己選對直譯器）。
-
-## 使用
+`scripts/` 底下的 script 會自己用 `.venv`，不需要先啟用。要指定別的直譯器設 `FARE_WATCH_PYTHON`。
 
 ```bash
 # 只列行程與請假天數，不查價
@@ -147,8 +180,8 @@ tail -f data/logs/fare_watch.log
 - 每天 08:00 與 20:00 各跑一輪 `scripts/run_grouped.sh`，每輪 `FARE_WATCH_MAX_FETCHES`（預設 24）格、
   約 22 分鐘；一天 48 格，184 格的完整視窗約 **4 天**輪完一次
 - plist 走 shell script 而不是直接 `python -m fare_watch`：launchd 不讀 shell profile，
-  `PATH` 裡的 `python3` 可能是沒裝 playwright 的那一版；script 會先檢查直譯器，缺套件就以 exit 78 明確失敗
-- 換機器時要改 plist 的 `WorkingDirectory` 與 `FARE_WATCH_PYTHON`
+  `PATH` 裡的 `python3` 可能是沒裝 playwright 的那一版；script 會優先用專案的 `.venv`，缺套件就以 exit 78 明確失敗
+- 換機器時要改 plist 裡的專案路徑
 
 ## 價格來源與「不捏造」原則
 
@@ -238,10 +271,10 @@ pip install flights        # 想用才裝；不裝就一直走 google_playwright
 ## 測試
 
 ```bash
-/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11 -m pytest
+.venv/bin/python -m pytest
 ```
 
-162 個測試，全部離線（瀏覽器層在測試裡被替身取代，解析層吃 `tests/fixtures/` 的頁面快照）。
+165 個測試，全部離線（瀏覽器層在測試裡被替身取代，解析層吃 `tests/fixtures/` 的頁面快照）。
 fixture 只用來測解析，不會出現在 production 路徑。
 
 真的連網的煙霧測試（會開瀏覽器、約 2 分鐘）：
@@ -361,8 +394,9 @@ python -m fare_watch.holiday_deals TPE 2026-09-25 2026-09-28   # 連假第一天
 每個連假給 4 種走法——照放、前一天請假、後一天請假、前後各請一天——請假天數用官方日曆逐日算。
 去程只有 2 個候選日、回程也只有 2 個，所以每個地點 **4 次單程查詢**就能排出全部 4 種組合。
 
-**查哪些地點**：桃園 TPE 出發，沖繩、大阪、東京成田、福岡、首爾、釜山、香港、曼谷（共 32 次查詢，約數分鐘）。
-清單寫在 `holiday_deals.DESTINATIONS`。排行只列每個地點最便宜的走法，其餘收在下方明細；
+**查哪些地點**：預設桃園 TPE 出發，沖繩、大阪、東京成田、福岡、首爾、釜山、香港、曼谷（共 32 次查詢，約數分鐘），
+清單寫在 `holiday_deals.DESTINATIONS`。首頁搜尋列可以改出發地；「想去哪裡」填了就只多查那一個地點的 4 次查詢、
+併進既有排行，不會重跑其他地點（命令列是 `--destination CTS`）。排行只列每個地點最便宜的走法，其餘收在下方明細；
 按「看全部航班」會帶著日期跳到指定日期查價。
 
 - 第一次打開首頁、最近的連假從沒查過時會自動開始查；之後一律顯示上次結果與查詢時間，
