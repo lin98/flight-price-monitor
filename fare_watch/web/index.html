@@ -1,13 +1,14 @@
 <!doctype html>
 <html lang="zh-Hant">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="request-token" content="__TOKEN__"><meta name="description" content="查詢直飛機票、比較便宜日期，追蹤同一航班每天的票價變化。"><title>航程筆記 · 機票查詢與追蹤</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="request-token" content="__TOKEN__"><meta name="description" content="查詢直飛機票、比較便宜日期，追蹤同一航班每天的票價變化。"><title>航程筆記 · 機票查詢與追蹤</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script><script src="/holiday.js" defer></script></head>
 <body>
 <header class="top"><a class="brand" href="/" aria-label="航程筆記首頁"><span class="brand-icon">↗</span> 航程筆記 <small>FARE NOTES</small></a><span class="local"><i></i> 本機使用 · 資料存在這台 Mac</span></header>
 <main>
-<section class="intro"><p class="eyebrow">下一段旅程，從好價格開始</p><h1>選好日期，<span>找到你的航班。</span></h1><p>比較直飛班次、尋找便宜日期，也把每一次價格變化留下來。</p></section>
-<nav class="tabs" aria-label="功能"><button class="tab active" data-mode="dates" aria-pressed="true">指定日期查價</button><button class="tab" data-mode="scan" aria-pressed="false">找便宜日期</button><button class="tab" data-mode="history" aria-pressed="false">票價歷史</button></nav>
-<section id="watches" class="panel watches"><h3>我的票價追蹤</h3><p class="meta">儲存航線與日期後，可一鍵重新查價或查看歷史。尚未啟用每日自動查詢。</p><div id="watch-list"></div></section>
-<section class="search-card">
+<section class="intro"><p class="eyebrow">下一段旅程，從好價格開始</p><h1>下一個連假，<span>飛哪裡最划算？</span></h1><p>依人事行政總處的辦公日曆找出最近的連假，排好請假走法，再比較各地直飛票價。</p></section>
+<nav class="tabs" aria-label="功能"><button class="tab active" data-mode="holiday" aria-pressed="true">連假便宜機票</button><button class="tab" data-mode="dates" aria-pressed="false">指定日期查價</button><button class="tab" data-mode="scan" aria-pressed="false">找便宜日期</button><button class="tab" data-mode="history" aria-pressed="false">票價歷史</button></nav>
+<section id="holiday"><div id="break-list" class="break-list" aria-label="即將到來的連假"></div><div id="holiday-message" role="alert" hidden></div><section id="break-options" class="panel"></section><section id="holiday-progress" class="progress-card" aria-live="polite" hidden><div class="progress-top"><span class="spinner"></span><strong>正在比較各地票價</strong></div><p id="holiday-progress-line">連線查詢中，請稍候…</p><small>8 個地點約需數分鐘，查完一個地點就會先顯示。</small></section><div id="deal-results" aria-live="polite"></div><div class="holiday-actions"><button type="button" class="primary" id="refresh-deals" hidden>重新查價</button></div><p class="meta" id="holiday-source"></p></section>
+<section id="watches" class="panel watches" hidden><h3>我的票價追蹤</h3><p class="meta">儲存航線與日期後，可一鍵重新查價或查看歷史。尚未啟用每日自動查詢。</p><div id="watch-list"></div></section>
+<section class="search-card" hidden>
 <form id="search-form">
 <div class="route-row"><label>出發地<input id="origin" name="origin" value="台北" required autocomplete="off" placeholder="城市或機場代碼"></label><button type="button" id="swap" class="swap" title="交換出發與目的地" aria-label="交換出發與目的地">⇄</button><label>目的地<input id="destination" name="destination" value="釜山" required autocomplete="off" placeholder="城市或機場代碼"></label></div>
 
@@ -18,6 +19,6 @@
 </form></section>
 <div id="message" role="alert" hidden></div>
 <section id="progress" class="progress-card" aria-live="polite" hidden><div class="progress-top"><span class="spinner"></span><strong id="progress-title">正在查詢航班</strong><span id="progress-count"></span></div><progress id="progress-bar" max="100" value="0"></progress><p id="progress-line">連線查詢中，請稍候…</p><small>首次查詢需等待來源回覆。你可以切換到票價歷史，查詢仍會繼續。</small></section>
-<div id="results" aria-live="polite"><section class="empty"><div class="empty-symbol">✈</div><h2>出發之前，先看看選擇。</h2><p>填好航線與日期，這裡就會列出航班、起降時間與價格。</p><div class="empty-notes"><span>所有可見直飛班次</span><span>價格自動留下紀錄</span><span>可搭配不同航空公司</span></div></section></div>
+<div id="results" aria-live="polite" hidden><section class="empty"><div class="empty-symbol">✈</div><h2>出發之前，先看看選擇。</h2><p>填好航線與日期，這裡就會列出航班、起降時間與價格。</p><div class="empty-notes"><span>所有可見直飛班次</span><span>價格自動留下紀錄</span><span>可搭配不同航空公司</span></div></section></div>
 <footer>價格以來源當下顯示為準。兩張單程合計不等於航空公司來回套票；行李與退改規則需另確認。<br>每日自動查詢尚未啟用；每次實際查價都會留下歷史紀錄。</footer>
 </main></body></html>

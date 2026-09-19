@@ -83,6 +83,7 @@ class Application:
         self.lock = threading.Lock()
         self.token = secrets.token_urlsafe(32)
         self.runner = runner or self.execute
+        self.calendar_options = {}
 
     def watches(self):
         path = self.data_dir / 'web' / 'watches.json'
@@ -121,15 +122,45 @@ class Application:
             temp.replace(path)
             return rows
 
-    def start(self, payload):
+    def holidays(self):
+        from .dgpa_calendar import CAVEAT, DATASET_PAGE, Calendar, upcoming_breaks
+        today = date.today()
+        loaded = Calendar(self.data_dir / 'holidays', **self.calendar_options).load(today)
+        return {'today': today.isoformat(), 'breaks': upcoming_breaks(loaded['days'], today),
+                'sources': loaded['sources'], 'errors': loaded['errors'],
+                'source_name': '行政院人事行政總處 政府行政機關辦公日曆表', 'source_page': DATASET_PAGE, 'caveat': CAVEAT}
+
+    def deals_request(self, payload):
+        origin = airport(str(payload.get('origin', '')))
+        start, end = iso_date(str(payload.get('start', ''))), iso_date(str(payload.get('end', '')))
+        return origin, start, end, self.data_dir / 'web' / 'deals' / f'{origin}-{start}-{end}'
+
+    def deals(self, payload):
+        origin, start, end, output = self.deals_request(payload)
+        path = output / 'latest.json'
+        with self.lock:
+            running = next((j['id'] for j in self.jobs.values()
+                            if j['state'] == 'running' and j['output'] == str(output)), None)
+        return {'report': json.loads(path.read_text()) if path.exists() else None, 'job': running}
+
+    def start_deals(self, payload):
+        origin, start, end, output = self.deals_request(payload)
+        if not any(b['start'] == str(start) and b['end'] == str(end) for b in self.holidays()['breaks']):
+            raise ValueError('這不是辦公日曆表上即將到來的連假')
+        args = [origin, str(start), str(end), '--output', str(output), '--history-db', str(self.db),
+                '--calendar-dir', str(self.data_dir / 'holidays')] + (['--refresh'] if payload.get('refresh') else [])
+        return self.start(payload, args=args, output=output, module='fare_watch.holiday_deals')
+
+    def start(self, payload, args=None, output=None, module='fare_watch.search'):
         job_id = secrets.token_hex(12)
-        output = self.data_dir / 'web' / 'runs' / job_id
-        args = search_arguments(payload, output, self.db)
+        if args is None:
+            output = self.data_dir / 'web' / 'runs' / job_id
+            args = search_arguments(payload, output, self.db)
         with self.lock:
             if any(j['state'] == 'running' for j in self.jobs.values()):
                 raise RuntimeError('已有查詢正在執行，請等它完成後再查下一組。')
             self.jobs[job_id] = {'id': job_id, 'state': 'running', 'logs': [], 'created_at': time.time(),
-                                 'output': str(output), 'report': None, 'error': ''}
+                                 'output': str(output), 'report': None, 'error': '', 'module': module}
             # Keep active and recent jobs without unbounded process-memory growth.
             for old in list(self.jobs)[:-30]:
                 del self.jobs[old]
@@ -142,8 +173,9 @@ class Application:
             output.mkdir(parents=True, exist_ok=True)
             shared_cache = self.data_dir / 'web' / 'cache'
             shared_cache.mkdir(parents=True, exist_ok=True)
-            (output / 'cache').symlink_to(shared_cache.resolve(), target_is_directory=True)
-            process = subprocess.Popen([sys.executable, '-m', 'fare_watch.search', *args], cwd=ROOT,
+            if not (output / 'cache').exists():
+                (output / 'cache').symlink_to(shared_cache.resolve(), target_is_directory=True)
+            process = subprocess.Popen([sys.executable, '-m', self.jobs[job_id]['module'], *args], cwd=ROOT,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             for line in process.stderr:
                 with self.lock:
@@ -164,7 +196,11 @@ class Application:
         with self.lock:
             if job_id not in self.jobs:
                 return None
-            return {k: v for k, v in self.jobs[job_id].items() if k != 'output'}
+            job = dict(self.jobs[job_id])
+        partial = Path(job['output']) / 'partial.json'
+        if job['state'] == 'running' and job['module'].endswith('holiday_deals') and partial.exists():
+            job['report'] = json.loads(partial.read_text())
+        return {k: v for k, v in job.items() if k not in ('output', 'module')}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -196,13 +232,21 @@ class Handler(BaseHTTPRequestHandler):
         if not self.trusted_host():
             return self.send(403, {'error': '此服務只接受本機存取'})
         parsed = urlparse(self.path)
-        if parsed.path in ('/', '/app.js', '/style.css'):
+        if parsed.path in ('/', '/app.js', '/holiday.js', '/style.css'):
             name = 'index.html' if parsed.path == '/' else parsed.path[1:]
             body = (ASSETS / name).read_bytes()
             if name == 'index.html':
                 body = body.replace(b'__TOKEN__', self.app.token.encode())
             kind = {'html': 'text/html', 'js': 'text/javascript', 'css': 'text/css'}[name.rsplit('.', 1)[1]]
             return self.send(200, body, kind + '; charset=utf-8')
+        if parsed.path == '/api/holidays':
+            return self.send(200, self.app.holidays())
+        if parsed.path == '/api/deals':
+            q = parse_qs(parsed.query)
+            try:
+                return self.send(200, self.app.deals({k: q.get(k, [''])[0] for k in ('origin', 'start', 'end')}))
+            except (ValueError, argparse.ArgumentTypeError) as exc:
+                return self.send(400, {'error': str(exc)})
         if parsed.path == '/api/airports':
             return self.send(200, airport_options())
         if parsed.path == '/api/watches':
@@ -235,7 +279,7 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get('Origin')
         if origin and origin not in {f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}'}:
             return self.send(403, {'error': '不允許其他網站啟動查詢'})
-        if self.path not in ('/api/search', '/api/watches', '/api/watches/remove'):
+        if self.path not in ('/api/search', '/api/deals', '/api/watches', '/api/watches/remove'):
             return self.send(404, {'error': '找不到操作'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
@@ -250,7 +294,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(payload, dict) or not isinstance(payload.get('id'), str):
                     raise ValueError('追蹤編號格式不正確')
                 return self.send(200, self.app.remove_watch(payload['id']))
-            job_id = self.app.start(payload)
+            job_id = self.app.start_deals(payload) if self.path == '/api/deals' else self.app.start(payload)
             return self.send(202, {'id': job_id})
         except (ValueError, argparse.ArgumentTypeError) as exc:
             return self.send(400, {'error': str(exc)})
