@@ -221,6 +221,10 @@ pip install flights        # 想用才裝；不裝就一直走 google_playwright
 166 個測試，全部離線（瀏覽器層在測試裡被替身取代，解析層吃 `tests/fixtures/` 的頁面快照）。
 fixture 只用來測解析，不會出現在 production 路徑。
 
+`tests/fixtures/dgpa_calendar_2026.csv`、`dgpa_calendar_2027.csv` 是行政院人事行政總處發布的
+「[中華民國政府行政機關辦公日曆表](https://data.gov.tw/dataset/14718)」原檔，依
+[政府資料開放授權條款－第 1 版](https://data.gov.tw/license)利用；`dgpa_dataset_index.json` 是同一資料集索引的精簡版（只留檔案描述、格式與位址）。
+
 真的連網的煙霧測試（會開瀏覽器、約 2 分鐘）：
 
 ```bash
