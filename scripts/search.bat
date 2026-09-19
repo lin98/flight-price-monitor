@@ -1,16 +1,10 @@
 @echo off
-rem Windows counterpart of web.sh: installs on first run, then starts the local web UI.
+rem Windows counterpart of search.sh: any-route fare search and the "history" subcommand.
 rem Messages are in English on purpose: cmd.exe is not UTF-8 by default.
 setlocal
 cd /d "%~dp0.."
 rem Reports and progress lines contain Chinese; force UTF-8 so nothing is decoded as cp950.
 set PYTHONUTF8=1
-
-rem First run has no environment yet: install it so this is the only file a user has to remember.
-if not defined FARE_WATCH_PYTHON if not exist ".venv\Scripts\python.exe" (
-    echo First run: installing, about 1-2 minutes, only needed once...
-    call "%~dp0setup.bat" || exit /b 1
-)
 rem Interpreter order: FARE_WATCH_PYTHON, then the project .venv (made by setup.bat), then python on PATH.
 if defined FARE_WATCH_PYTHON (
     set "PYTHON=%FARE_WATCH_PYTHON%"
@@ -19,5 +13,5 @@ if defined FARE_WATCH_PYTHON (
 ) else (
     set "PYTHON=python"
 )
-"%PYTHON%" -m fare_watch.web_server %*
+"%PYTHON%" -m fare_watch.search %*
 exit /b %errorlevel%
